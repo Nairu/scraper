@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/sselph/scraper/ovgdb-dl"
 )
 
 const (
@@ -109,77 +110,6 @@ func (o *OVGDB) Close() error {
 	return o.db.Close()
 }
 
-func updateDB(ctx context.Context, version, p string) error {
-	log.Print("INFO: Checking for new OpenVGDB.")
-	req, err := http.NewRequest("GET", zipURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("if-none-match", version)
-	req = req.WithContext(ctx)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotModified {
-		log.Printf("INFO: OpenVGDB %s up to date.", version)
-		return nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("got %v response", resp.Status)
-	}
-	if version != "" && resp.StatusCode == 429 {
-		log.Printf("WARN: Using cached OpenVGDB. Server over quota.")
-		return nil
-	}
-	dbp := filepath.Join(p, dbName)
-	err = os.RemoveAll(dbp)
-	if err != nil {
-		return err
-	}
-	err = os.Mkdir(dbp, 0775)
-	if err != nil {
-		return err
-	}
-	newVersion := resp.Header.Get("etag")
-	log.Printf("INFO: Upgrading OpenGDB: %s -> %s.", version, newVersion)
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	zf := filepath.Join(p, zipName)
-	err = ioutil.WriteFile(zf, b, 0664)
-	if err != nil {
-		return err
-	}
-	rc, err := zip.OpenReader(zf)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-	for _, v := range rc.Reader.File {
-		n := v.FileHeader.Name
-		frc, err := v.Open()
-		if err != nil {
-			return err
-		}
-		defer frc.Close()
-		b, err = ioutil.ReadAll(frc)
-		if err != nil {
-			return err
-		}
-		err = ioutil.WriteFile(filepath.Join(dbp, n), b, 0664)
-		if err != nil {
-			return err
-		}
-	}
-	log.Print("INFO: Upgrade Complete.")
-	os.Remove(zf)
-	ioutil.WriteFile(filepath.Join(p, metaName), []byte(newVersion), 0664)
-	return nil
-}
-
 func getDB(ctx context.Context, p string, u bool) (*leveldb.DB, error) {
 	var err error
 	if p == "" {
@@ -189,21 +119,12 @@ func getDB(ctx context.Context, p string, u bool) (*leveldb.DB, error) {
 		}
 	}
 	err = mkDir(p)
-	var version string
 	if err != nil {
 		return nil, err
 	}
 	fp := filepath.Join(p, dbName)
-	mp := filepath.Join(p, metaName)
-	if exists(fp) && exists(mp) {
-		b, err := ioutil.ReadFile(mp)
-		if err != nil {
-			return nil, err
-		}
-		version = strings.Trim(string(b[:]), "\n\r")
-	}
 	if !exists(fp) || u {
-		err = updateDB(ctx, version, p)
+		err = ovgdbdl.RefreshCache(p)
 		if err != nil {
 			return nil, err
 		}
