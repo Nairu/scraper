@@ -1,4 +1,4 @@
-package main
+package ovgdbdl
 
 import (
 	"archive/zip"
@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/sselph/scraper/ds"
 	"github.com/syndtr/goleveldb/leveldb"
 	"io/ioutil"
 	"log"
@@ -24,7 +23,7 @@ const (
 	apiURL   = "https://api.github.com/repos/OpenVGDB/OpenVGDB/releases?page=1&per_page=1"
 	fileName = "openvgdb.sqlite"
 	zipName  = "openvgdb.zip"
-	metaName = "openvgdb-s.meta"
+	metaName = "openvgdb.meta"
 	dbName   = "ldb"
 )
 
@@ -231,18 +230,14 @@ func exists(f string) bool {
 	return !os.IsNotExist(err) && fi.Size() > 0
 }
 
-func getDB() (*sql.DB, error) {
-	p, err := ds.DefaultCachePath()
-	if err != nil {
-		return nil, err
-	}
+func getDB(p string) (*sql.DB, error) {
 	err = mkDir(p)
 	var version string
 	if err != nil {
 		return nil, err
 	}
-	fp := path.Join(p, fileName)
-	mp := path.Join(p, metaName)
+	fp := filepath.Join(p, fileName)
+	mp := filepath.Join(p, metaName)
 	if exists(fp) && exists(mp) {
 		b, err := ioutil.ReadFile(mp)
 		if err != nil {
@@ -272,32 +267,28 @@ func marshalGame(g game) ([]byte, error) {
 	return json.Marshal(s)
 }
 
-func main() {
-	db, err := getDB()
+func RefreshCache(p string) (error) {
+	db, err := getDB(p)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	games, err := queryDB(db, query)
 	if err != nil {
-		log.Fatal(err)
-	}
-	p, err := ds.DefaultCachePath()
-	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	os.RemoveAll(path.Join(p, dbName))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	ldb, err := leveldb.OpenFile(path.Join(p, dbName), nil)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer ldb.Close()
 	for _, g := range games {
 		b, err := marshalGame(g)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		batch := new(leveldb.Batch)
 		i := []byte(g.RomID)
@@ -310,7 +301,9 @@ func main() {
 		batch.Put(hn, fn)
 		err = ldb.Write(batch, nil)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
+	
+	return nil
 }
