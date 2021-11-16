@@ -276,11 +276,11 @@ func RefreshCache(p string) (error) {
 	if err != nil {
 		return err
 	}
-	os.RemoveAll(path.Join(p, dbName))
+	os.RemoveAll(filepath.Join(p, dbName))
 	if err != nil {
 		return err
 	}
-	ldb, err := leveldb.OpenFile(path.Join(p, dbName), nil)
+	ldb, err := leveldb.OpenFile(filepath.Join(p, dbName), nil)
 	if err != nil {
 		return err
 	}
