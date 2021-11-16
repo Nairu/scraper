@@ -150,6 +150,7 @@ func getRelease() (*Release, error) {
 	if len(releases) == 0 {
 		return nil, fmt.Errorf("no releases found")
 	}
+	log.Printf("INFO: Release - %s", releases[0])
 	return &releases[0], nil
 }
 
